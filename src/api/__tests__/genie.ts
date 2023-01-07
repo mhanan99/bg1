@@ -22,7 +22,6 @@ import {
   Guest,
   isGenieOrigin,
   LightningLane,
-  ModifyNotAllowed,
   PlusExperience,
   RequestError,
 } from '../genie';
@@ -108,7 +107,6 @@ describe('GenieClient', () => {
     fetchJsonMock.mockReset();
     authStore.deleteData.mockReset();
     onUnauthorized.mockReset();
-    setTime('10:00');
   });
 
   describe('primaryGuestId()', () => {
@@ -141,6 +139,8 @@ describe('GenieClient', () => {
 
   describe('experiences()', () => {
     it('returns experience info', async () => {
+      jest.useFakeTimers();
+
       const nextBookTime = '11:00:00';
       const res = response({
         availableExperiences: [sm],
@@ -162,6 +162,7 @@ describe('GenieClient', () => {
       };
       const getExpData = async () => client.experiences(mk);
       respond(...Array(4).fill(res));
+      setTime('10:00');
       expect(await getExpData()).toEqual([smExp]);
       expect(client.nextBookTime).toBe('11:00:00');
       expectFetch(
@@ -389,17 +390,6 @@ describe('GenieClient', () => {
         experience: hm,
       });
     });
-
-    it('throws ModifyNotAllowed when not allowed to modify', async () => {
-      await expect(
-        client.offer(hm, guests, { ...booking, modifiable: false })
-      ).rejects.toThrow(ModifyNotAllowed);
-
-      setTime(booking.end.time as string, { minutes: 1 });
-      await expect(client.offer(hm, guests, booking)).rejects.toThrow(
-        ModifyNotAllowed
-      );
-    });
   });
 
   describe('cancelOffer()', () => {
@@ -554,25 +544,21 @@ describe('GenieClient', () => {
     }
     const bookingsRes = createBookingsResponse(bookings);
 
+    beforeAll(() => jest.useFakeTimers());
+    afterAll(() => jest.useRealTimers());
+
     it('returns current bookings', async () => {
-      setTime(lttRes.start.time, { minutes: 30 });
+      setTime('12:45');
       respond(bookingsRes);
       expect(await client.bookings()).toEqual(bookings);
     });
 
     it('excludes non-LL reservations >30 minutes old', async () => {
-      setTime(lttRes.start.time, { minutes: 31 });
+      setTime('12:46');
       respond(bookingsRes);
       expect(await client.bookings()).toEqual(
         bookings.filter(b => b !== lttRes)
       );
-    });
-
-    it('overrides API-supplied modifiable property if end of return window', async () => {
-      setTime(booking.end.time as string, { minutes: 1 });
-      respond(bookingsRes);
-      const b = (await client.bookings()).filter(b => b.id === booking.id)[0];
-      expect(b.modifiable).toBe(false);
     });
 
     it('includes park data', async () => {
@@ -676,17 +662,6 @@ describe('GenieClient', () => {
       respond(response({}, 410));
       await expect(client.book(offer)).rejects.toThrow(RequestError);
     });
-
-    it('throws ModifyNotAllowed when not allowed to modify', async () => {
-      await expect(
-        client.book(offer, { ...booking, modifiable: false })
-      ).rejects.toThrow(ModifyNotAllowed);
-
-      setTime(booking.end.time as string, { minutes: 1 });
-      await expect(client.book(offer, booking)).rejects.toThrow(
-        ModifyNotAllowed
-      );
-    });
   });
 
   describe('cancelBooking()', () => {
@@ -705,6 +680,7 @@ describe('GenieClient', () => {
 
   describe('nextDropTime()', () => {
     it('returns next drop time', () => {
+      jest.useFakeTimers();
       setTime('11:30:59');
       expect(client.nextDropTime(mk)).toBe('11:30');
       setTime('11:31:00');
@@ -713,6 +689,7 @@ describe('GenieClient', () => {
       expect(client.nextDropTime(mk)).toBe('17:30');
       setTime('17:31:00');
       expect(client.nextDropTime(mk)).toBe(undefined);
+      jest.useRealTimers();
     });
   });
 
